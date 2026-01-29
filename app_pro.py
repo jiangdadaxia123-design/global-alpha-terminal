@@ -10,7 +10,7 @@ import time
 
 # ================= 1. 页面配置 =================
 st.set_page_config(
-    page_title="Universal Alpha Terminal",
+    page_title="Universal Alpha Terminal | 全球全资产策略终端",
     page_icon="🌍",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -19,8 +19,11 @@ st.set_page_config(
 # ================= 2. UI 深度定制 =================
 st.markdown("""
 <style>
-    /* 1. 全局背景色 */
-    .stApp {background-color: #12141C; font-family: -apple-system, BlinkMacSystemFont, sans-serif;}
+    /* 1. 全局背景色与字体适配 */
+    .stApp {
+        background-color: #12141C; 
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
     
     /* 2. 强制所有基础文字颜色为亮白 */
     h1, h2, h3, h4, p, div, span, label, li, b {
@@ -100,9 +103,6 @@ def get_yfinance_data(symbol, interval):
 
 @st.cache_data(ttl=60) 
 def get_market_data(asset_type, symbol, interval, use_proxy_setting, proxy_url_setting):
-    """
-    智能数据适配器：支持自动降级 (Fallback)
-    """
     df = pd.DataFrame()
     
     # === 代理配置 ===
@@ -140,7 +140,7 @@ def get_market_data(asset_type, symbol, interval, use_proxy_setting, proxy_url_s
                     yf_symbol = symbol.replace("USDT", "-USD")
                     df = get_yfinance_data(yf_symbol, interval)
                     if df is None:
-                        st.error("❌ 数据源连接失败，请检查网络。")
+                        st.error("❌ 数据源连接失败。")
                         return None
 
         # B. 美股/大宗
@@ -165,7 +165,6 @@ def get_market_data(asset_type, symbol, interval, use_proxy_setting, proxy_url_s
                     st.error(f"❌ 无法获取 A股数据 ({symbol})。")
                     return None
             
-        # 数据清洗
         if not df.empty:
             cols = ['Open', 'High', 'Low', 'Close', 'Volume']
             for col in cols:
@@ -283,7 +282,6 @@ with st.sidebar:
 # --- 主界面 ---
 st.markdown(f"<h1 style='margin-bottom:0;'>🌍 Universal Alpha Terminal <span style='font-size:20px; color:#00E396;'>全球全资产策略终端</span> <span style='font-size:16px; color:#aaa;'>| {selected_name}</span></h1>", unsafe_allow_html=True)
 
-# 获取数据
 with st.spinner(f"正在连接数据源 ({asset_class})..."):
     df_raw = get_market_data(asset_class, ticker, interval_ui, use_proxy, proxy_port)
     
@@ -307,13 +305,14 @@ if df_raw is not None:
         
         col1, col2 = st.columns(2)
         
-        # 卖方/成本分析 (修复：转义 $ 符号，防止手机端崩溃)
+        # 卖方/成本分析
         with col1:
             st.markdown(f"### 🐢 长期成本趋势 (MA200)")
             st.markdown('<div class="metric-card">', unsafe_allow_html=True)
             c1, c2 = st.columns(2)
-            # 🔥 修复：使用 \$ 转义美元符号
-            c1.metric("当前价格", f"\${data['price']:,.2f}")
+            # 🔥 核心修改：移除数字前面的 $ 符号，改为在标题中注明单位，或者直接显示纯数字
+            # 手机端浏览器对 $ 符号极其敏感，移除它是唯一的修复方案
+            c1.metric("当前价格 (USD/CNY)", f"{data['price']:,.2f}")
             c2.metric("成本偏离度", f"{data['ratio']:.2f}", delta="< 1.05 为安全", delta_color="inverse")
             
             fig_lth = go.Figure()
@@ -348,13 +347,13 @@ if df_raw is not None:
             st.markdown(f"""<div class="conclusion-box"><span class="status-tag {tag_cls_buy}">{logic['buy_st']}</span> <span style="color:#ddd; margin-left:8px;">{logic['buy_txt']}</span></div>""", unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
             
-        # 筹码支撑 (修复：转义 $ 符号)
+        # 筹码支撑
         st.markdown(f"### 🎯 筹码结构 (Chip Distribution)")
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
         ca, cb = st.columns([1, 2])
         with ca:
-            # 🔥 修复：使用 \$ 转义美元符号
-            st.metric("最强支撑位", f"\${data['support']:,.2f}")
+            # 🔥 核心修改：移除 $ 符号
+            st.metric("最强支撑位", f"{data['support']:,.2f}")
             gap = ((data['price'] - data['support']) / data['price']) * 100
             st.metric("距离支撑", f"{gap:.2f}%", delta="回踩支撑" if 0 < gap < 5 else "远离", delta_color="inverse")
             if gap < 0: st.error("⚠️ 跌破主要支撑区！")

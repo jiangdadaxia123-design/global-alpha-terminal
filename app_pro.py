@@ -16,11 +16,14 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ================= 2. UI 深度定制 =================
+# ================= 2. UI 深度定制 (手机适配版) =================
 st.markdown("""
 <style>
-    /* 1. 全局背景色 */
-    .stApp {background-color: #12141C; font-family: 'Inter', sans-serif;}
+    /* 1. 全局字体适配 (解决手机乱码的关键 CSS) */
+    .stApp {
+        background-color: #12141C; 
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
     
     /* 2. 强制所有基础文字颜色为亮白 */
     h1, h2, h3, h4, p, div, span, label, li, b {
@@ -106,7 +109,6 @@ def get_market_data(asset_type, symbol, interval, use_proxy_setting, proxy_url_s
     df = pd.DataFrame()
     
     # === 代理配置 ===
-    # 仅当非 A股 且 用户勾选时启用
     if asset_type != "A-Shares (A股)" and use_proxy_setting and proxy_url_setting:
         os.environ["http_proxy"] = proxy_url_setting
         os.environ["https_proxy"] = proxy_url_setting
@@ -115,88 +117,58 @@ def get_market_data(asset_type, symbol, interval, use_proxy_setting, proxy_url_s
         os.environ.pop("https_proxy", None)
 
     try:
-        # -----------------------------------------------------------
-        # A. 币圈 (Binance -> Binance US -> Yahoo)
-        # -----------------------------------------------------------
+        # A. 币圈
         if asset_type == "Crypto (币安)":
             limit = 300
             binance_interval = {"日线 (1D)": "1d", "周线 (1W)": "1w", "月线 (1M)": "1M"}[interval]
             headers = {'User-Agent': 'Mozilla/5.0'}
             
-            # 1. 尝试 Binance Global
             try:
                 url = "https://api.binance.com/api/v3/klines"
                 params = {"symbol": symbol, "interval": binance_interval, "limit": limit}
                 r = requests.get(url, params=params, headers=headers, timeout=5)
-                
-                if r.status_code == 451: # 遇到地区封锁
-                    raise Exception("Geo-blocked (451)")
-                elif r.status_code != 200:
-                    raise Exception(f"Error {r.status_code}")
-                    
+                if r.status_code != 200: raise Exception(f"Error {r.status_code}")
                 data = r.json()
                 df = pd.DataFrame(data, columns=['Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'x', 'y', 'z', 'a', 'b', 'c'])
                 df['Time'] = pd.to_datetime(df['Time'], unit='ms')
-                
-            except Exception as e:
-                # 2. 失败！尝试 Binance US (针对美国云服务器)
-                # st.toast(f"⚠️ Global接口受限，切换 US 线路...") # 调试用
+            except:
                 try:
                     url_us = "https://api.binance.us/api/v3/klines"
-                    # US 站点的币对代码通常一致，直接重试
                     r = requests.get(url_us, params=params, headers=headers, timeout=5)
                     r.raise_for_status()
                     data = r.json()
                     df = pd.DataFrame(data, columns=['Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'x', 'y', 'z', 'a', 'b', 'c'])
                     df['Time'] = pd.to_datetime(df['Time'], unit='ms')
-                    
                 except:
-                    # 3. 彻底失败！切换 Yahoo Finance (保底)
-                    # st.toast(f"⚠️ Binance 全线阻塞，切换 Yahoo 源...")
-                    yf_symbol = symbol.replace("USDT", "-USD") # 格式转换: BTCUSDT -> BTC-USD
+                    yf_symbol = symbol.replace("USDT", "-USD")
                     df = get_yfinance_data(yf_symbol, interval)
                     if df is None:
-                        st.error("❌ 所有数据源均无法连接 (Binance/Yahoo)，请检查网络。")
+                        st.error("❌ 数据源连接失败，请检查网络。")
                         return None
 
-        # -----------------------------------------------------------
-        # B. 美股/大宗 (Yahoo Finance)
-        # -----------------------------------------------------------
+        # B. 美股/大宗
         elif asset_type in ["US Stocks (美股)", "Commodities (大宗)"]:
             df = get_yfinance_data(symbol, interval)
             if df is None:
-                st.error(f"Yahoo Finance 无数据 ({symbol})。云端部署请关闭代理，本地请开启代理。")
+                st.error(f"无法获取数据 ({symbol})。")
                 return None
             
-        # -----------------------------------------------------------
-        # C. A股 (AkShare -> Yahoo Finance)
-        # -----------------------------------------------------------
+        # C. A股
         elif asset_type == "A-Shares (A股)":
             ak_period = {"日线 (1D)": "daily", "周线 (1W)": "weekly", "月线 (1M)": "monthly"}[interval]
-            
-            # 1. 尝试 AkShare (直连)
             try:
                 df = ak.stock_zh_a_hist(symbol=symbol, period=ak_period, adjust="qfq")
                 df = df.rename(columns={"日期": "Time", "开盘": "Open", "最高": "High", "最低": "Low", "收盘": "Close", "成交量": "Volume"})
                 df['Time'] = pd.to_datetime(df['Time'])
-            
-            except Exception as e:
-                # 2. 失败！尝试 Yahoo Finance (作为云端备份)
-                # st.toast(f"⚠️ AkShare 连接超时，切换 Yahoo 线路...")
-                
-                # 构建 Yahoo 格式代码
-                # 60开头 -> .SS (沪市), 00/30开头 -> .SZ (深市)
-                if symbol.startswith("6"):
-                    yf_symbol = f"{symbol}.SS"
-                else:
-                    yf_symbol = f"{symbol}.SZ"
-                
+            except:
+                if symbol.startswith("6"): yf_symbol = f"{symbol}.SS"
+                else: yf_symbol = f"{symbol}.SZ"
                 df = get_yfinance_data(yf_symbol, interval)
                 if df is None:
-                    st.error(f"❌ AkShare 和 Yahoo 均无法获取 A股数据 ({symbol})。")
+                    st.error(f"❌ 无法获取 A股数据 ({symbol})。")
                     return None
             
-        # === 数据清洗 ===
+        # 数据清洗
         if not df.empty:
             cols = ['Open', 'High', 'Low', 'Close', 'Volume']
             for col in cols:
@@ -207,7 +179,7 @@ def get_market_data(asset_type, symbol, interval, use_proxy_setting, proxy_url_s
             return None
 
     except Exception as e:
-        st.error(f"系统严重错误: {e}")
+        st.error(f"系统错误: {e}")
         return None
 
 # ================= 4. 逻辑计算引擎 =================
@@ -218,19 +190,14 @@ def calculate_indicators(df):
         return None
     
     current_price = df['Close'].iloc[-1]
-    
-    # 1. 长期成本
     ma200 = df['Close'].rolling(200).mean().iloc[-1]
     if pd.isna(ma200): ma200 = df['Close'].mean()
-        
     lth_ratio = current_price / ma200 if ma200 > 0 else 0
     
-    # 2. 资金动量
     vol_short = df['Volume'].tail(7).mean()
     vol_long = df['Volume'].tail(90).mean()
     demand_score = vol_short / vol_long if vol_long > 0 else 0
     
-    # 3. 筹码支撑
     price_hist = df['Close'].tail(150)
     vol_hist = df['Volume'].tail(150)
     counts, bin_edges = np.histogram(price_hist, bins=60, weights=vol_hist)
@@ -281,7 +248,6 @@ with st.sidebar:
     st.header("🔍 资产扫描")
     
     st.markdown("### 📶 智能网络设置")
-    # 🔥 云端部署默认关闭代理 (value=False)
     use_proxy = st.checkbox("自动代理加速 (本地需开启/云端需关闭)", value=False)
     proxy_port = st.text_input("代理地址", value="http://127.0.0.1:10809")
     

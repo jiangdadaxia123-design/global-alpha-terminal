@@ -10,20 +10,17 @@ import time
 
 # ================= 1. 页面配置 =================
 st.set_page_config(
-    page_title="Universal Alpha Terminal | 全球全资产策略终端",
+    page_title="Universal Alpha Terminal",
     page_icon="🌍",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# ================= 2. UI 深度定制 (手机适配版) =================
+# ================= 2. UI 深度定制 =================
 st.markdown("""
 <style>
-    /* 1. 全局字体适配 (解决手机乱码的关键 CSS) */
-    .stApp {
-        background-color: #12141C; 
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-    }
+    /* 1. 全局背景色 */
+    .stApp {background-color: #12141C; font-family: -apple-system, BlinkMacSystemFont, sans-serif;}
     
     /* 2. 强制所有基础文字颜色为亮白 */
     h1, h2, h3, h4, p, div, span, label, li, b {
@@ -86,7 +83,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ================= 3. 超级数据引擎 (含多重灾备) =================
+# ================= 3. 超级数据引擎 =================
 
 def get_yfinance_data(symbol, interval):
     """Yahoo Finance 通用获取函数"""
@@ -310,12 +307,13 @@ if df_raw is not None:
         
         col1, col2 = st.columns(2)
         
-        # 卖方/成本分析
+        # 卖方/成本分析 (修复：转义 $ 符号，防止手机端崩溃)
         with col1:
             st.markdown(f"### 🐢 长期成本趋势 (MA200)")
             st.markdown('<div class="metric-card">', unsafe_allow_html=True)
             c1, c2 = st.columns(2)
-            c1.metric("当前价格", f"{data['price']:,.2f}")
+            # 🔥 修复：使用 \$ 转义美元符号
+            c1.metric("当前价格", f"\${data['price']:,.2f}")
             c2.metric("成本偏离度", f"{data['ratio']:.2f}", delta="< 1.05 为安全", delta_color="inverse")
             
             fig_lth = go.Figure()
@@ -350,12 +348,13 @@ if df_raw is not None:
             st.markdown(f"""<div class="conclusion-box"><span class="status-tag {tag_cls_buy}">{logic['buy_st']}</span> <span style="color:#ddd; margin-left:8px;">{logic['buy_txt']}</span></div>""", unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
             
-        # 筹码支撑
+        # 筹码支撑 (修复：转义 $ 符号)
         st.markdown(f"### 🎯 筹码结构 (Chip Distribution)")
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
         ca, cb = st.columns([1, 2])
         with ca:
-            st.metric("最强支撑位", f"{data['support']:,.2f}")
+            # 🔥 修复：使用 \$ 转义美元符号
+            st.metric("最强支撑位", f"\${data['support']:,.2f}")
             gap = ((data['price'] - data['support']) / data['price']) * 100
             st.metric("距离支撑", f"{gap:.2f}%", delta="回踩支撑" if 0 < gap < 5 else "远离", delta_color="inverse")
             if gap < 0: st.error("⚠️ 跌破主要支撑区！")

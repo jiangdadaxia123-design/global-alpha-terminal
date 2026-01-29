@@ -105,6 +105,10 @@ def get_market_data(asset_type, symbol, interval, use_proxy_setting, proxy_url_s
     elif use_proxy_setting and proxy_url_setting:
         os.environ["http_proxy"] = proxy_url_setting
         os.environ["https_proxy"] = proxy_url_setting
+    else:
+        # 如果未开启代理，清除环境变量，确保走直连
+        os.environ.pop("http_proxy", None)
+        os.environ.pop("https_proxy", None)
         
     try:
         # --- A. 币圈 (Binance) ---
@@ -134,7 +138,7 @@ def get_market_data(asset_type, symbol, interval, use_proxy_setting, proxy_url_s
             df = ticker_obj.history(period="2y", interval=yf_interval)
             
             if df.empty:
-                st.error(f"无法获取数据 ({symbol})。请确认代理 {proxy_url_setting} 是否通畅。")
+                st.error(f"无法获取数据 ({symbol})。如果是本地运行请开启代理，如果是云端部署请关闭代理。")
                 return None
                 
             df = df.reset_index()
@@ -240,7 +244,8 @@ with st.sidebar:
     st.header("🔍 资产扫描")
     
     st.markdown("### 📶 智能网络设置")
-    use_proxy = st.checkbox("自动代理加速 (美股/大宗/币圈)", value=True)
+    # 🔥 核心修改：value=False (云端部署默认关闭代理)
+    use_proxy = st.checkbox("自动代理加速 (本地需开启/云端需关闭)", value=False)
     proxy_port = st.text_input("代理地址", value="http://127.0.0.1:10809")
     
     st.divider()
@@ -320,7 +325,6 @@ if df_raw is not None:
             st.plotly_chart(fig_lth, use_container_width=True)
             
             tag_cls = "tag-green" if "低" in logic['sell_st'] else ("tag-red" if "高" in logic['sell_st'] else "tag-yellow")
-            # --- 修复点：确保这里括号闭合 ---
             st.markdown(f"""<div class="conclusion-box"><span class="status-tag {tag_cls}">{logic['sell_st']}</span> <span style="color:#ddd; margin-left:8px;">{logic['sell_txt']}</span></div>""", unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
             
@@ -340,7 +344,6 @@ if df_raw is not None:
             st.plotly_chart(fig_vol, use_container_width=True)
             
             tag_cls_buy = "tag-green" if "抢筹" in logic['buy_st'] else ("tag-red" if "枯竭" in logic['buy_st'] else "tag-yellow")
-            # --- 修复点：确保这里括号闭合 ---
             st.markdown(f"""<div class="conclusion-box"><span class="status-tag {tag_cls_buy}">{logic['buy_st']}</span> <span style="color:#ddd; margin-left:8px;">{logic['buy_txt']}</span></div>""", unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
             
@@ -371,4 +374,4 @@ if df_raw is not None:
     else:
         st.warning("数据量过少，无法进行分析。")
 else:
-    st.info("若连接失败，请检查 VPN 端口是否正确。")
+    st.info("若连接失败，请检查网络设置。")

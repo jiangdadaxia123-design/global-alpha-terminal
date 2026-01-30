@@ -19,18 +19,18 @@ st.set_page_config(
 # ================= 2. UI 深度定制 =================
 st.markdown("""
 <style>
-    /* 1. 全局背景色与字体适配 */
+    /* 1. 全局背景色与字体适配 (手机兼容) */
     .stApp {
         background-color: #12141C; 
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        font-family: -apple-system, Helvetica, Arial, sans-serif;
     }
     
     /* 2. 强制所有基础文字颜色为亮白 */
-    h1, h2, h3, h4, p, div, span, label, li, b {
+    h1, h2, h3, h4, p, div, span, label, li, b, td, th {
         color: #E0E0E0 !important;
     }
     
-    /* 3. 侧边栏与下拉框深度定制 */
+    /* 3. 侧边栏 */
     [data-testid="stSidebar"] {
         background-color: #161920; 
         border-right: 1px solid #333;
@@ -46,18 +46,12 @@ st.markdown("""
         border-color: #444 !important;
         color: #E0E0E0 !important;
     }
-    
-    /* 下拉菜单选项 */
     div[data-baseweb="popover"], ul[data-testid="stSelectboxVirtualDropdown"] {
         background-color: #1E222D !important;
     }
     li[role="option"] {
         color: #E0E0E0 !important;
         background-color: #1E222D !important;
-    }
-    li[role="option"]:hover, li[role="option"][aria-selected="true"] {
-        background-color: #2B303B !important;
-        color: #00E396 !important;
     }
     
     /* 4. 卡片样式 */
@@ -86,10 +80,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ================= 3. 超级数据引擎 =================
+# ================= 3. 数据引擎 =================
 
 def get_yfinance_data(symbol, interval):
-    """Yahoo Finance 通用获取函数"""
     try:
         yf_interval = {"日线 (1D)": "1d", "周线 (1W)": "1wk", "月线 (1M)": "1mo"}[interval]
         ticker = yf.Ticker(symbol)
@@ -105,8 +98,10 @@ def get_yfinance_data(symbol, interval):
 def get_market_data(asset_type, symbol, interval, use_proxy_setting, proxy_url_setting):
     df = pd.DataFrame()
     
-    # === 代理配置 ===
-    if asset_type != "A-Shares (A股)" and use_proxy_setting and proxy_url_setting:
+    # A股相关都不走代理，其他看设置
+    is_cn_stock = "A-Shares" in asset_type or "Liquor" in asset_type # 包含 A股 或 白酒
+    
+    if not is_cn_stock and use_proxy_setting and proxy_url_setting:
         os.environ["http_proxy"] = proxy_url_setting
         os.environ["https_proxy"] = proxy_url_setting
     else:
@@ -119,12 +114,11 @@ def get_market_data(asset_type, symbol, interval, use_proxy_setting, proxy_url_s
             limit = 300
             binance_interval = {"日线 (1D)": "1d", "周线 (1W)": "1w", "月线 (1M)": "1M"}[interval]
             headers = {'User-Agent': 'Mozilla/5.0'}
-            
             try:
                 url = "https://api.binance.com/api/v3/klines"
                 params = {"symbol": symbol, "interval": binance_interval, "limit": limit}
                 r = requests.get(url, params=params, headers=headers, timeout=5)
-                if r.status_code != 200: raise Exception(f"Error {r.status_code}")
+                if r.status_code != 200: raise Exception("Error")
                 data = r.json()
                 df = pd.DataFrame(data, columns=['Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'x', 'y', 'z', 'a', 'b', 'c'])
                 df['Time'] = pd.to_datetime(df['Time'], unit='ms')
@@ -140,29 +134,30 @@ def get_market_data(asset_type, symbol, interval, use_proxy_setting, proxy_url_s
                     yf_symbol = symbol.replace("USDT", "-USD")
                     df = get_yfinance_data(yf_symbol, interval)
                     if df is None:
-                        st.error("❌ 数据源连接失败。")
+                        st.error("数据连接失败")
                         return None
 
         # B. 美股/大宗
         elif asset_type in ["US Stocks (美股)", "Commodities (大宗)"]:
             df = get_yfinance_data(symbol, interval)
             if df is None:
-                st.error(f"无法获取数据 ({symbol})。")
+                st.error("无法获取数据")
                 return None
             
-        # C. A股
-        elif asset_type == "A-Shares (A股)":
+        # C. A股 & 白酒 (共用逻辑)
+        elif asset_type in ["A-Shares (A股)", "A-Share Liquor (白酒精选)"]:
             ak_period = {"日线 (1D)": "daily", "周线 (1W)": "weekly", "月线 (1M)": "monthly"}[interval]
             try:
                 df = ak.stock_zh_a_hist(symbol=symbol, period=ak_period, adjust="qfq")
                 df = df.rename(columns={"日期": "Time", "开盘": "Open", "最高": "High", "最低": "Low", "收盘": "Close", "成交量": "Volume"})
                 df['Time'] = pd.to_datetime(df['Time'])
             except:
+                # 降级方案
                 if symbol.startswith("6"): yf_symbol = f"{symbol}.SS"
                 else: yf_symbol = f"{symbol}.SZ"
                 df = get_yfinance_data(yf_symbol, interval)
                 if df is None:
-                    st.error(f"❌ 无法获取 A股数据 ({symbol})。")
+                    st.error("无法获取A股数据")
                     return None
             
         if not df.empty:
@@ -174,15 +169,15 @@ def get_market_data(asset_type, symbol, interval, use_proxy_setting, proxy_url_s
         else:
             return None
 
-    except Exception as e:
-        st.error(f"系统错误: {e}")
+    except Exception:
+        st.error("系统错误")
         return None
 
-# ================= 4. 逻辑计算引擎 =================
+# ================= 4. 逻辑计算 =================
 
 def calculate_indicators(df):
     if df is None or len(df) < 120:
-        st.warning(f"数据量不足 (仅 {len(df) if df is not None else 0} 行)，无法计算 MA200。")
+        st.warning("数据量不足")
         return None
     
     current_price = df['Close'].iloc[-1]
@@ -205,26 +200,23 @@ def calculate_indicators(df):
         "demand": demand_score, "support": support_price, "history": df
     }
 
-# ================= 5. 结论生成引擎 =================
+# ================= 5. 结论生成 =================
 
 def generate_outlook(data):
-    # 卖方逻辑
     if data['ratio'] < 1.05:
         sell_status, sell_desc, sell_score = "🟢 极低抛压", "价格回踩长期成本线，获利盘清洗完毕，惜售明显。", 1
     elif data['ratio'] < 1.3:
-        sell_status, sell_desc, sell_score = "🟡 正常换手", "偏离度适中，处于健康趋势中。", 0
+        sell_status, sell_desc, sell_score = "🟡 正常换手", "趋势延续中。", 0
     else:
-        sell_status, sell_desc, sell_score = "🔴 高位获利", "乖离率过大，随时有回调风险。", -1
+        sell_status, sell_desc, sell_score = "🔴 高位获利", "乖离率过大，有风险。", -1
         
-    # 买方逻辑
     if data['demand'] > 1.3:
-        buy_status, buy_desc, buy_score = "🟢 资金抢筹", "成交量异常放大 (>130%)。", 1
+        buy_status, buy_desc, buy_score = "🟢 资金抢筹", "成交量异常放大。", 1
     elif data['demand'] > 0.8:
         buy_status, buy_desc, buy_score = "🟡 存量博弈", "成交量平稳。", 0
     else:
-        buy_status, buy_desc, buy_score = "🔴 流动性枯竭", "成交量低迷，市场缺乏关注。", -1
+        buy_status, buy_desc, buy_score = "🔴 流动性枯竭", "成交量低迷。", -1
         
-    # 综合结论
     if sell_score == 1 and buy_score == 1: outlook, color = "🚀 黄金坑 (底部放量)", "#00E396"
     elif sell_score == -1 and buy_score == -1: outlook, color = "🩸 顶部阴跌 (离场)", "#FF4560"
     elif sell_score == 1: outlook, color = "⚖️ 底部缩量 (左侧机会)", "#F0B90B"
@@ -251,7 +243,7 @@ with st.sidebar:
 
     asset_class = st.selectbox(
         "1. 选择市场", 
-        ["Crypto (币安)", "US Stocks (美股)", "A-Shares (A股)", "Commodities (大宗)"]
+        ["Crypto (币安)", "US Stocks (美股)", "A-Share Liquor (白酒精选)", "A-Shares (A股)", "Commodities (大宗)"]
     )
     
     if asset_class == "Crypto (币安)":
@@ -268,7 +260,16 @@ with st.sidebar:
         }
     elif asset_class == "Commodities (大宗)":
         symbol_map = {"Gold (黄金)": "GC=F", "Oil (原油)": "CL=F", "Silver (白银)": "SI=F"}
-    else: 
+    
+    elif asset_class == "A-Share Liquor (白酒精选)":
+        symbol_map = {
+            "贵州茅台 (老大)": "600519", "五粮液 (老二)": "000858", "泸州老窖 (高端)": "000568",
+            "山西汾酒 (清香龙头)": "600809", "洋河股份 (低估值)": "002304", "古井贡酒 (徽酒龙头)": "000596",
+            "今世缘 (苏酒)": "603369", "舍得酒业 (次高端)": "600702", "迎驾贡酒 (洞藏)": "603198",
+            "酒鬼酒 (馥郁香)": "000799"
+        }
+        
+    else: # A-Shares (A股其他)
         symbol_map = {
             "贵州茅台": "600519", "宁德时代": "300750", "东方财富": "300059", 
             "汇纳科技": "300609", "长春燃气": "600333", "机器人": "300024",
@@ -305,15 +306,13 @@ if df_raw is not None:
         
         col1, col2 = st.columns(2)
         
-        # 卖方/成本分析
+        # 卖方分析
         with col1:
             st.markdown(f"### 🐢 长期成本趋势 (MA200)")
             st.markdown('<div class="metric-card">', unsafe_allow_html=True)
             c1, c2 = st.columns(2)
-            # 🔥 核心修改：移除数字前面的 $ 符号，改为在标题中注明单位，或者直接显示纯数字
-            # 手机端浏览器对 $ 符号极其敏感，移除它是唯一的修复方案
-            c1.metric("当前价格 (USD/CNY)", f"{data['price']:,.2f}")
-            c2.metric("成本偏离度", f"{data['ratio']:.2f}", delta="< 1.05 为安全", delta_color="inverse")
+            c1.metric("当前价格", f"{data['price']:,.2f}")
+            c2.metric("成本偏离度", f"{data['ratio']:.2f}", delta="< 1.05 安全", delta_color="inverse")
             
             fig_lth = go.Figure()
             hist = data['history']
@@ -328,7 +327,7 @@ if df_raw is not None:
             st.markdown(f"""<div class="conclusion-box"><span class="status-tag {tag_cls}">{logic['sell_st']}</span> <span style="color:#ddd; margin-left:8px;">{logic['sell_txt']}</span></div>""", unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
             
-        # 买方/动量分析
+        # 买方分析
         with col2:
             st.markdown(f"### 🐇 资金需求动量")
             st.markdown('<div class="metric-card">', unsafe_allow_html=True)
@@ -352,7 +351,6 @@ if df_raw is not None:
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
         ca, cb = st.columns([1, 2])
         with ca:
-            # 🔥 核心修改：移除 $ 符号
             st.metric("最强支撑位", f"{data['support']:,.2f}")
             gap = ((data['price'] - data['support']) / data['price']) * 100
             st.metric("距离支撑", f"{gap:.2f}%", delta="回踩支撑" if 0 < gap < 5 else "远离", delta_color="inverse")
@@ -375,4 +373,4 @@ if df_raw is not None:
     else:
         st.warning("数据量过少，无法进行分析。")
 else:
-    st.info("若连接失败，请检查网络设置。")
+    st.info("连接中...")

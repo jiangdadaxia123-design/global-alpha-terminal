@@ -19,7 +19,7 @@ st.set_page_config(
 # ================= 2. UI 深度定制 =================
 st.markdown("""
 <style>
-    /* 1. 全局背景色与字体适配 (手机兼容) */
+    /* 1. 全局背景色与字体适配 */
     .stApp {
         background-color: #12141C; 
         font-family: -apple-system, Helvetica, Arial, sans-serif;
@@ -98,7 +98,7 @@ def get_yfinance_data(symbol, interval):
 def get_market_data(asset_type, symbol, interval, use_proxy_setting, proxy_url_setting):
     df = pd.DataFrame()
     
-    # A股相关都不走代理，其他看设置
+    # A股相关都不走代理
     is_cn_stock = "A-Shares" in asset_type or "Liquor" in asset_type 
     
     if not is_cn_stock and use_proxy_setting and proxy_url_setting:
@@ -269,7 +269,7 @@ with st.sidebar:
             "酒鬼酒 (馥郁香)": "000799"
         }
         
-    else: # A-Shares (A股全市场)
+    else: # A-Shares (A股全市场 - 修复版)
         symbol_map = {
             # --- 核心资产 ---
             "【核心】贵州茅台": "600519", 
@@ -277,4 +277,131 @@ with st.sidebar:
             "【核心】东方财富": "300059",
             
             # --- 科技/AI/算力 ---
-            "【AI算力】鸿博股份 (算力龙头)": "0022
+            "【AI算力】鸿博股份 (算力龙头)": "002229",
+            "【AI算力】梦网科技 (云通信)": "002123",
+            "【半导体】江波龙 (存储芯片)": "301308",
+            "【金融科技】赢时胜 (数字货币)": "300377",
+            
+            # --- 电子/制造/化工 ---
+            "【消费电子】东山精密 (特斯拉链)": "002384",
+            "【锂电化工】多氟多 (六氟磷酸锂)": "002407",
+            "【游戏/充电】惠程科技": "002168",
+            
+            # --- 中字头/基建/能源 ---
+            "【中字头】中国石油 (能源权重)": "601857",
+            "【中字头】中国核建 (核电基建)": "601611",
+            "【工程机械】山河智能 (低空经济)": "002097",
+            
+            # --- 消费/医药/传媒 ---
+            "【影视传媒】博纳影业 (院线)": "001330",
+            "【医药商业】开开实业": "600272",
+            
+            # --- 其他 ---
+            "【券商】国联证券": "601456",
+            "【银行】民生银行": "600016",
+            "【自选】汇纳科技": "300609",
+            "【自选】长春燃气": "600333",
+            "【龙头】机器人": "300024",
+            "【龙头】中航沈飞": "600760",
+            "【龙头】科大讯飞": "002230",
+            "【龙头】立讯精密": "002475"
+        }
+        
+    selected_name = st.selectbox("2. 选择标的", list(symbol_map.keys()))
+    ticker = symbol_map[selected_name]
+    interval_ui = st.radio("3. 分析周期", ["日线 (1D)", "周线 (1W)", "月线 (1M)"])
+    
+# --- 主界面 ---
+st.markdown(f"<h1 style='margin-bottom:0;'>🌍 Universal Alpha Terminal <span style='font-size:20px; color:#00E396;'>全球全资产策略终端</span> <span style='font-size:16px; color:#aaa;'>| {selected_name}</span></h1>", unsafe_allow_html=True)
+
+with st.spinner(f"正在连接数据源 ({asset_class})..."):
+    df_raw = get_market_data(asset_class, ticker, interval_ui, use_proxy, proxy_port)
+    
+if df_raw is not None:
+    data = calculate_indicators(df_raw)
+    
+    if data:
+        logic = generate_outlook(data)
+        
+        # 结论卡片
+        st.markdown(f"""
+        <div style="background: linear-gradient(90deg, rgba(30,34,45,1) 0%, rgba(37,42,56,1) 100%); 
+                    border-left: 6px solid {logic['color']}; padding: 25px; border-radius: 8px; margin: 20px 0; border: 1px solid #333;">
+            <h2 style="margin:0; color:{logic['color']} !important; font-size: 28px;">🎯 核心结论：{logic['outlook']}</h2>
+            <div style="margin-top:10px; font-size:16px; color:#E0E0E0;">
+                分析逻辑：<span style="font-weight:bold; color:#fff">{logic['sell_st']}</span> + 
+                <span style="font-weight:bold; color:#fff">{logic['buy_st']}</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        col1, col2 = st.columns(2)
+        
+        # 卖方分析
+        with col1:
+            st.markdown(f"### 🐢 长期成本趋势 (MA200)")
+            st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+            c1, c2 = st.columns(2)
+            c1.metric("当前价格", f"{data['price']:,.2f}")
+            c2.metric("成本偏离度", f"{data['ratio']:.2f}", delta="< 1.05 安全", delta_color="inverse")
+            
+            fig_lth = go.Figure()
+            hist = data['history']
+            fig_lth.add_trace(go.Scatter(x=hist['Time'], y=hist['Close'], name="Price", line=dict(color='#fff', width=1.5)))
+            fig_lth.add_trace(go.Scatter(x=hist['Time'], y=hist['Close'].rolling(200).mean(), name="MA200", line=dict(color='#FF4560', width=2)))
+            
+            fig_lth.update_layout(height=250, margin=dict(l=0,r=0,t=20,b=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                font={'color':'#ccc'}, xaxis=dict(showgrid=False), yaxis=dict(gridcolor='#333'), showlegend=False)
+            st.plotly_chart(fig_lth, use_container_width=True)
+            
+            tag_cls = "tag-green" if "低" in logic['sell_st'] else ("tag-red" if "高" in logic['sell_st'] else "tag-yellow")
+            st.markdown(f"""<div class="conclusion-box"><span class="status-tag {tag_cls}">{logic['sell_st']}</span> <span style="color:#ddd; margin-left:8px;">{logic['sell_txt']}</span></div>""", unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+        # 买方分析
+        with col2:
+            st.markdown(f"### 🐇 资金需求动量")
+            st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+            c3, c4 = st.columns(2)
+            c3.metric("量能得分", f"{data['demand']:.2f}", delta="> 1.0 增量", delta_color="normal")
+            
+            fig_vol = go.Figure()
+            colors = ['#00E396' if r.Open < r.Close else '#FF4560' for i, r in hist.tail(60).iterrows()]
+            fig_vol.add_trace(go.Bar(x=hist['Time'].tail(60), y=hist['Volume'].tail(60), marker_color=colors))
+            
+            fig_vol.update_layout(height=250, margin=dict(l=0,r=0,t=20,b=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                font={'color':'#ccc'}, xaxis=dict(showgrid=False), yaxis=dict(gridcolor='#333'), showlegend=False)
+            st.plotly_chart(fig_vol, use_container_width=True)
+            
+            tag_cls_buy = "tag-green" if "抢筹" in logic['buy_st'] else ("tag-red" if "枯竭" in logic['buy_st'] else "tag-yellow")
+            st.markdown(f"""<div class="conclusion-box"><span class="status-tag {tag_cls_buy}">{logic['buy_st']}</span> <span style="color:#ddd; margin-left:8px;">{logic['buy_txt']}</span></div>""", unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+        # 筹码支撑
+        st.markdown(f"### 🎯 筹码结构 (Chip Distribution)")
+        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+        ca, cb = st.columns([1, 2])
+        with ca:
+            st.metric("最强支撑位", f"{data['support']:,.2f}")
+            gap = ((data['price'] - data['support']) / data['price']) * 100
+            st.metric("距离支撑", f"{gap:.2f}%", delta="回踩支撑" if 0 < gap < 5 else "远离", delta_color="inverse")
+            if gap < 0: st.error("⚠️ 跌破主要支撑区！")
+        with cb:
+            price_hist = data['history']['Close'].tail(150)
+            vol_hist = data['history']['Volume'].tail(150)
+            counts, bin_edges = np.histogram(price_hist, bins=50, weights=vol_hist)
+            
+            fig_chip = go.Figure()
+            fig_chip.add_trace(go.Bar(y=bin_edges[:-1], x=counts, orientation='h', marker_color='#4A5568'))
+            fig_chip.add_hline(y=data['price'], line_color="#00E396", annotation_text="Price")
+            fig_chip.add_hline(y=data['support'], line_color="#F0B90B", annotation_text="Support")
+            
+            fig_chip.update_layout(height=250, margin=dict(l=0,r=0,t=0,b=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                font={'color':'#ccc'}, xaxis=dict(showgrid=False, visible=False), yaxis=dict(gridcolor='#333'), showlegend=False)
+            st.plotly_chart(fig_chip, use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+    else:
+        st.warning("数据量过少，无法进行分析。")
+else:
+    st.info("连接中...")

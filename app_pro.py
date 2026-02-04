@@ -19,7 +19,7 @@ st.set_page_config(
 # ================= 2. UI 深度定制 =================
 st.markdown("""
 <style>
-    /* 1. 全局背景色与字体适配 */
+    /* 1. 全局背景色与字体适配 (手机兼容) */
     .stApp {
         background-color: #12141C; 
         font-family: -apple-system, Helvetica, Arial, sans-serif;
@@ -98,7 +98,7 @@ def get_yfinance_data(symbol, interval):
 def get_market_data(asset_type, symbol, interval, use_proxy_setting, proxy_url_setting):
     df = pd.DataFrame()
     
-    # A股相关都不走代理
+    # A股相关都不走代理，其他看设置
     is_cn_stock = "A-Shares" in asset_type or "Liquor" in asset_type 
     
     if not is_cn_stock and use_proxy_setting and proxy_url_setting:
@@ -148,16 +148,22 @@ def get_market_data(asset_type, symbol, interval, use_proxy_setting, proxy_url_s
         elif asset_type in ["A-Shares (A股)", "A-Share Liquor (白酒精选)"]:
             ak_period = {"日线 (1D)": "daily", "周线 (1W)": "weekly", "月线 (1M)": "monthly"}[interval]
             try:
+                # 尝试使用 AkShare 股票接口 (可能对部分ETF不生效)
                 df = ak.stock_zh_a_hist(symbol=symbol, period=ak_period, adjust="qfq")
                 df = df.rename(columns={"日期": "Time", "开盘": "Open", "最高": "High", "最低": "Low", "收盘": "Close", "成交量": "Volume"})
                 df['Time'] = pd.to_datetime(df['Time'])
             except:
-                # 降级方案
-                if symbol.startswith("6"): yf_symbol = f"{symbol}.SS"
-                else: yf_symbol = f"{symbol}.SZ"
+                # 降级方案: Yahoo Finance
+                # 修复逻辑: 6开头(沪市主板)或5开头(沪市ETF) -> .SS
+                # 0/3/1开头 -> .SZ
+                if symbol.startswith("6") or symbol.startswith("5"): 
+                    yf_symbol = f"{symbol}.SS"
+                else: 
+                    yf_symbol = f"{symbol}.SZ"
+                    
                 df = get_yfinance_data(yf_symbol, interval)
                 if df is None:
-                    st.error("无法获取A股数据")
+                    st.error("无法获取A股数据(AkShare/Yahoo均失败)")
                     return None
             
         if not df.empty:
@@ -269,8 +275,13 @@ with st.sidebar:
             "酒鬼酒 (馥郁香)": "000799"
         }
         
-    else: # A-Shares (A股全市场 - 修复版)
+    else: # A-Shares (A股全市场)
         symbol_map = {
+            # --- 热门ETF (A股) ---
+            "【ETF】机器人ETF (562500)": "562500",
+            "【ETF】半导体ETF (512480)": "512480",
+            "【ETF】创新药ETF (512290)": "512290",
+
             # --- 核心资产 ---
             "【核心】贵州茅台": "600519", 
             "【核心】宁德时代": "300750", 
@@ -397,7 +408,7 @@ if df_raw is not None:
             fig_chip.add_hline(y=data['support'], line_color="#F0B90B", annotation_text="Support")
             
             fig_chip.update_layout(height=250, margin=dict(l=0,r=0,t=0,b=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                font={'color':'#ccc'}, xaxis=dict(showgrid=False, visible=False), yaxis=dict(gridcolor='#333'), showlegend=False)
+                font={'color':'#ccc'}, xaxis=dict(showgrid=False), visible=False), yaxis=dict(gridcolor='#333'), showlegend=False)
             st.plotly_chart(fig_chip, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
         

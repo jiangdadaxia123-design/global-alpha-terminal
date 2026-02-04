@@ -148,22 +148,18 @@ def get_market_data(asset_type, symbol, interval, use_proxy_setting, proxy_url_s
         elif asset_type in ["A-Shares (A股)", "A-Share Liquor (白酒精选)"]:
             ak_period = {"日线 (1D)": "daily", "周线 (1W)": "weekly", "月线 (1M)": "monthly"}[interval]
             try:
-                # 尝试使用 AkShare 股票接口 (可能对部分ETF不生效)
                 df = ak.stock_zh_a_hist(symbol=symbol, period=ak_period, adjust="qfq")
                 df = df.rename(columns={"日期": "Time", "开盘": "Open", "最高": "High", "最低": "Low", "收盘": "Close", "成交量": "Volume"})
                 df['Time'] = pd.to_datetime(df['Time'])
             except:
-                # 降级方案: Yahoo Finance
-                # 修复逻辑: 6开头(沪市主板)或5开头(沪市ETF) -> .SS
-                # 0/3/1开头 -> .SZ
+                # 降级方案
                 if symbol.startswith("6") or symbol.startswith("5"): 
                     yf_symbol = f"{symbol}.SS"
                 else: 
                     yf_symbol = f"{symbol}.SZ"
-                    
                 df = get_yfinance_data(yf_symbol, interval)
                 if df is None:
-                    st.error("无法获取A股数据(AkShare/Yahoo均失败)")
+                    st.error("无法获取A股数据")
                     return None
             
         if not df.empty:
@@ -388,7 +384,7 @@ if df_raw is not None:
             st.markdown(f"""<div class="conclusion-box"><span class="status-tag {tag_cls_buy}">{logic['buy_st']}</span> <span style="color:#ddd; margin-left:8px;">{logic['buy_txt']}</span></div>""", unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
             
-        # 筹码支撑
+        # 筹码支撑 (修复版)
         st.markdown(f"### 🎯 筹码结构 (Chip Distribution)")
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
         ca, cb = st.columns([1, 2])
@@ -407,8 +403,17 @@ if df_raw is not None:
             fig_chip.add_hline(y=data['price'], line_color="#00E396", annotation_text="Price")
             fig_chip.add_hline(y=data['support'], line_color="#F0B90B", annotation_text="Support")
             
-            fig_chip.update_layout(height=250, margin=dict(l=0,r=0,t=0,b=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                font={'color':'#ccc'}, xaxis=dict(showgrid=False), visible=False), yaxis=dict(gridcolor='#333'), showlegend=False)
+            # 🔥 修复了之前的语法错误 🔥
+            fig_chip.update_layout(
+                height=250, 
+                margin=dict(l=0,r=0,t=0,b=0), 
+                paper_bgcolor='rgba(0,0,0,0)', 
+                plot_bgcolor='rgba(0,0,0,0)',
+                font={'color':'#ccc'}, 
+                xaxis=dict(showgrid=False, visible=False), 
+                yaxis=dict(gridcolor='#333'), 
+                showlegend=False
+            )
             st.plotly_chart(fig_chip, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
         

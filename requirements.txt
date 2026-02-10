@@ -1,7 +1,8 @@
-streamlit
-plotly
+streamlit==1.30.0
+plotly==5.18.0
 pandas
 numpy
 requests
 yfinance
 akshare
+kaleido==0.2.1

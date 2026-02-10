@@ -7,7 +7,7 @@ import yfinance as yf
 import akshare as ak
 import os
 import time
-from io import BytesIO # 新增：用于图片流处理
+from io import BytesIO # 用于图片流处理
 
 # ================= 1. 页面配置 =================
 st.set_page_config(
@@ -88,15 +88,14 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ================= 3. 图片生成引擎 (新增功能) =================
+# ================= 3. 图片生成引擎 =================
 def generate_high_res_image(fig):
     """将Plotly图表转换为3倍高清PNG字节流"""
     try:
-        # scale=3 意味着图片清晰度是默认的3倍，非常适合小红书
+        # scale=3 意味着图片清晰度是默认的3倍
         img_bytes = fig.to_image(format="png", width=1000, height=600, scale=3)
         return BytesIO(img_bytes)
     except Exception as e:
-        # 如果Kaleido引擎失败，返回None
         return None
 
 # ================= 4. 数据引擎 =================
@@ -287,37 +286,24 @@ with st.sidebar:
         
     else: # A-Shares (A股全市场)
         symbol_map = {
-            # --- 热门ETF (A股) ---
             "【ETF】机器人ETF (562500)": "562500",
             "【ETF】半导体ETF (512480)": "512480",
             "【ETF】创新药ETF (512290)": "512290",
-
-            # --- 核心资产 ---
             "【核心】贵州茅台": "600519", 
             "【核心】宁德时代": "300750", 
             "【核心】东方财富": "300059",
-            
-            # --- 科技/AI/算力 ---
             "【AI算力】鸿博股份 (算力龙头)": "002229",
             "【AI算力】梦网科技 (云通信)": "002123",
             "【半导体】江波龙 (存储芯片)": "301308",
             "【金融科技】赢时胜 (数字货币)": "300377",
-            
-            # --- 电子/制造/化工 ---
             "【消费电子】东山精密 (特斯拉链)": "002384",
             "【锂电化工】多氟多 (六氟磷酸锂)": "002407",
             "【游戏/充电】惠程科技": "002168",
-            
-            # --- 中字头/基建/能源 ---
             "【中字头】中国石油 (能源权重)": "601857",
             "【中字头】中国核建 (核电基建)": "601611",
             "【工程机械】山河智能 (低空经济)": "002097",
-            
-            # --- 消费/医药/传媒 ---
             "【影视传媒】博纳影业 (院线)": "001330",
             "【医药商业】开开实业": "600272",
-            
-            # --- 其他 ---
             "【券商】国联证券": "601456",
             "【银行】民生银行": "600016",
             "【自选】汇纳科技": "300609",
@@ -358,7 +344,7 @@ if df_raw is not None:
         
         col1, col2 = st.columns(2)
         
-        # 卖方分析 (增加下载按钮)
+        # 卖方分析 (高清图版)
         with col1:
             st.markdown(f"### 🐢 长期成本趋势 (MA200)")
             st.markdown('<div class="metric-card">', unsafe_allow_html=True)
@@ -368,14 +354,24 @@ if df_raw is not None:
             
             fig_lth = go.Figure()
             hist = data['history']
-            fig_lth.add_trace(go.Scatter(x=hist['Time'], y=hist['Close'], name="Price", line=dict(color='#fff', width=1.5)))
-            fig_lth.add_trace(go.Scatter(x=hist['Time'], y=hist['Close'].rolling(200).mean(), name="MA200", line=dict(color='#FF4560', width=2)))
+            # 添加图例名称
+            fig_lth.add_trace(go.Scatter(x=hist['Time'], y=hist['Close'], name="当前价格", line=dict(color='#fff', width=1.5)))
+            fig_lth.add_trace(go.Scatter(x=hist['Time'], y=hist['Close'].rolling(200).mean(), name="MA200成本线", line=dict(color='#FF4560', width=2)))
             
-            fig_lth.update_layout(height=250, margin=dict(l=0,r=0,t=20,b=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                font={'color':'#ccc'}, xaxis=dict(showgrid=False), yaxis=dict(gridcolor='#333'), showlegend=False)
+            # 🔥 完善坐标轴和图例显示，确保下载图片信息完整
+            fig_lth.update_layout(
+                height=250, 
+                margin=dict(l=10,r=10,t=30,b=10), # 增加边距防止文字被切
+                paper_bgcolor='rgba(0,0,0,0)', 
+                plot_bgcolor='rgba(0,0,0,0)',
+                font={'color':'#ccc'},
+                xaxis=dict(showgrid=False, showticklabels=True, title="日期"), # 显示X轴标签
+                yaxis=dict(gridcolor='#333', showticklabels=True), # 显示Y轴标签
+                showlegend=True, # 显示图例
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1) # 图例放上面
+            )
             st.plotly_chart(fig_lth, use_container_width=True)
             
-            # 🔥 高清图下载逻辑
             img = generate_high_res_image(fig_lth)
             if img:
                 st.download_button("📥 下载成本分析图 (高清)", img, f"{ticker}_成本分析.png", "image/png", use_container_width=True)
@@ -384,7 +380,7 @@ if df_raw is not None:
             st.markdown(f"""<div class="conclusion-box"><span class="status-tag {tag_cls}">{logic['sell_st']}</span> <span style="color:#ddd; margin-left:8px;">{logic['sell_txt']}</span></div>""", unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
             
-        # 买方分析 (增加下载按钮)
+        # 买方分析 (高清图版)
         with col2:
             st.markdown(f"### 🐇 资金需求动量")
             st.markdown('<div class="metric-card">', unsafe_allow_html=True)
@@ -393,13 +389,22 @@ if df_raw is not None:
             
             fig_vol = go.Figure()
             colors = ['#00E396' if r.Open < r.Close else '#FF4560' for i, r in hist.tail(60).iterrows()]
-            fig_vol.add_trace(go.Bar(x=hist['Time'].tail(60), y=hist['Volume'].tail(60), marker_color=colors))
+            # 添加图例名称
+            fig_vol.add_trace(go.Bar(x=hist['Time'].tail(60), y=hist['Volume'].tail(60), marker_color=colors, name="成交量"))
             
-            fig_vol.update_layout(height=250, margin=dict(l=0,r=0,t=20,b=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                font={'color':'#ccc'}, xaxis=dict(showgrid=False), yaxis=dict(gridcolor='#333'), showlegend=False)
+            # 🔥 完善坐标轴显示
+            fig_vol.update_layout(
+                height=250, 
+                margin=dict(l=10,r=10,t=30,b=10),
+                paper_bgcolor='rgba(0,0,0,0)', 
+                plot_bgcolor='rgba(0,0,0,0)',
+                font={'color':'#ccc'}, 
+                xaxis=dict(showgrid=False, showticklabels=True, title="日期"), # 显示X轴
+                yaxis=dict(gridcolor='#333', showticklabels=True, title="成交量"), # 显示Y轴
+                showlegend=False
+            )
             st.plotly_chart(fig_vol, use_container_width=True)
             
-            # 🔥 高清图下载逻辑
             img_vol = generate_high_res_image(fig_vol)
             if img_vol:
                 st.download_button("📥 下载量能分析图 (高清)", img_vol, f"{ticker}_量能分析.png", "image/png", use_container_width=True)
@@ -408,7 +413,7 @@ if df_raw is not None:
             st.markdown(f"""<div class="conclusion-box"><span class="status-tag {tag_cls_buy}">{logic['buy_st']}</span> <span style="color:#ddd; margin-left:8px;">{logic['buy_txt']}</span></div>""", unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
             
-        # 筹码支撑 (增加下载按钮)
+        # 筹码支撑 (高清图版 - 修复坐标轴)
         st.markdown(f"### 🎯 筹码结构 (Chip Distribution)")
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
         ca, cb = st.columns([1, 2])
@@ -423,15 +428,27 @@ if df_raw is not None:
             counts, bin_edges = np.histogram(price_hist, bins=50, weights=vol_hist)
             
             fig_chip = go.Figure()
-            fig_chip.add_trace(go.Bar(y=bin_edges[:-1], x=counts, orientation='h', marker_color='#4A5568'))
-            fig_chip.add_hline(y=data['price'], line_color="#00E396", annotation_text="Price")
-            fig_chip.add_hline(y=data['support'], line_color="#F0B90B", annotation_text="Support")
+            # 添加图例名称
+            fig_chip.add_trace(go.Bar(y=bin_edges[:-1], x=counts, orientation='h', marker_color='#4A5568', name="筹码分布"))
+            fig_chip.add_hline(y=data['price'], line_color="#00E396", annotation_text="当前价格", annotation_position="top left")
+            fig_chip.add_hline(y=data['support'], line_color="#F0B90B", annotation_text="最强支撑", annotation_position="bottom left")
             
-            fig_chip.update_layout(height=250, margin=dict(l=0,r=0,t=0,b=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                font={'color':'#ccc'}, xaxis=dict(showgrid=False, visible=False), yaxis=dict(gridcolor='#333'), showlegend=False)
+            # 🔥 重磅修复：显示X轴和Y轴的刻度与标题，确保下载图片信息完整
+            fig_chip.update_layout(
+                height=250, 
+                margin=dict(l=10,r=10,t=30,b=20), # 增加底部边距放X轴标题
+                paper_bgcolor='rgba(0,0,0,0)', 
+                plot_bgcolor='rgba(0,0,0,0)',
+                font={'color':'#ccc'}, 
+                # 恢复X轴显示，并加上标题
+                xaxis=dict(showgrid=False, visible=True, showticklabels=True, title="筹码堆积量 (Volume Profile)"), 
+                # Y轴加上标题
+                yaxis=dict(gridcolor='#333', showticklabels=True, title="价格分布区间"), 
+                showlegend=True,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
             st.plotly_chart(fig_chip, use_container_width=True)
             
-            # 🔥 高清图下载逻辑
             img_chip = generate_high_res_image(fig_chip)
             if img_chip:
                 st.download_button("📥 下载筹码分析图 (高清)", img_chip, f"{ticker}_筹码分析.png", "image/png", use_container_width=True)

@@ -7,6 +7,7 @@ import yfinance as yf
 import akshare as ak
 import os
 import time
+from io import BytesIO # 新增：用于图片流处理
 
 # ================= 1. 页面配置 =================
 st.set_page_config(
@@ -19,7 +20,7 @@ st.set_page_config(
 # ================= 2. UI 深度定制 =================
 st.markdown("""
 <style>
-    /* 1. 全局背景色与字体适配 (手机兼容) */
+    /* 1. 全局背景色与字体适配 */
     .stApp {
         background-color: #12141C; 
         font-family: -apple-system, Helvetica, Arial, sans-serif;
@@ -74,13 +75,31 @@ st.markdown("""
     .tag-green {background: #00E396;}
     .tag-red {background: #FF4560;}
     .tag-yellow {background: #F0B90B;}
+    
+    /* 7. 下载按钮美化 */
+    .stDownloadButton button {
+        background-color: #2B303B !important;
+        color: #00E396 !important;
+        border: 1px solid #00E396 !important;
+    }
 
     /* 隐藏默认元素 */
     #MainMenu, footer, header {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
 
-# ================= 3. 数据引擎 =================
+# ================= 3. 图片生成引擎 (新增功能) =================
+def generate_high_res_image(fig):
+    """将Plotly图表转换为3倍高清PNG字节流"""
+    try:
+        # scale=3 意味着图片清晰度是默认的3倍，非常适合小红书
+        img_bytes = fig.to_image(format="png", width=1000, height=600, scale=3)
+        return BytesIO(img_bytes)
+    except Exception as e:
+        # 如果Kaleido引擎失败，返回None
+        return None
+
+# ================= 4. 数据引擎 =================
 
 def get_yfinance_data(symbol, interval):
     try:
@@ -98,7 +117,6 @@ def get_yfinance_data(symbol, interval):
 def get_market_data(asset_type, symbol, interval, use_proxy_setting, proxy_url_setting):
     df = pd.DataFrame()
     
-    # A股相关都不走代理，其他看设置
     is_cn_stock = "A-Shares" in asset_type or "Liquor" in asset_type 
     
     if not is_cn_stock and use_proxy_setting and proxy_url_setting:
@@ -109,7 +127,6 @@ def get_market_data(asset_type, symbol, interval, use_proxy_setting, proxy_url_s
         os.environ.pop("https_proxy", None)
 
     try:
-        # A. 币圈
         if asset_type == "Crypto (币安)":
             limit = 300
             binance_interval = {"日线 (1D)": "1d", "周线 (1W)": "1w", "月线 (1M)": "1M"}[interval]
@@ -137,14 +154,12 @@ def get_market_data(asset_type, symbol, interval, use_proxy_setting, proxy_url_s
                         st.error("数据连接失败")
                         return None
 
-        # B. 美股/大宗
         elif asset_type in ["US Stocks (美股)", "Commodities (大宗)"]:
             df = get_yfinance_data(symbol, interval)
             if df is None:
                 st.error("无法获取数据")
                 return None
             
-        # C. A股 (含白酒)
         elif asset_type in ["A-Shares (A股)", "A-Share Liquor (白酒精选)"]:
             ak_period = {"日线 (1D)": "daily", "周线 (1W)": "weekly", "月线 (1M)": "monthly"}[interval]
             try:
@@ -152,7 +167,6 @@ def get_market_data(asset_type, symbol, interval, use_proxy_setting, proxy_url_s
                 df = df.rename(columns={"日期": "Time", "开盘": "Open", "最高": "High", "最低": "Low", "收盘": "Close", "成交量": "Volume"})
                 df['Time'] = pd.to_datetime(df['Time'])
             except:
-                # 降级方案
                 if symbol.startswith("6") or symbol.startswith("5"): 
                     yf_symbol = f"{symbol}.SS"
                 else: 
@@ -175,7 +189,7 @@ def get_market_data(asset_type, symbol, interval, use_proxy_setting, proxy_url_s
         st.error("系统错误")
         return None
 
-# ================= 4. 逻辑计算 =================
+# ================= 5. 逻辑计算 =================
 
 def calculate_indicators(df):
     if df is None or len(df) < 120:
@@ -202,7 +216,7 @@ def calculate_indicators(df):
         "demand": demand_score, "support": support_price, "history": df
     }
 
-# ================= 5. 结论生成 =================
+# ================= 6. 结论生成 =================
 
 def generate_outlook(data):
     if data['ratio'] < 1.05:
@@ -231,7 +245,7 @@ def generate_outlook(data):
         "outlook": outlook, "color": color
     }
 
-# ================= 6. 界面渲染 =================
+# ================= 7. 界面渲染 =================
 
 # --- 侧边栏 ---
 with st.sidebar:
@@ -344,12 +358,12 @@ if df_raw is not None:
         
         col1, col2 = st.columns(2)
         
-        # 卖方分析
+        # 卖方分析 (增加下载按钮)
         with col1:
             st.markdown(f"### 🐢 长期成本趋势 (MA200)")
             st.markdown('<div class="metric-card">', unsafe_allow_html=True)
             c1, c2 = st.columns(2)
-            c1.metric("当前价格", f"{data['price']:,.2f}")
+            c1.metric("当前价格 (USD/CNY)", f"{data['price']:,.2f}")
             c2.metric("成本偏离度", f"{data['ratio']:.2f}", delta="< 1.05 安全", delta_color="inverse")
             
             fig_lth = go.Figure()
@@ -361,11 +375,16 @@ if df_raw is not None:
                 font={'color':'#ccc'}, xaxis=dict(showgrid=False), yaxis=dict(gridcolor='#333'), showlegend=False)
             st.plotly_chart(fig_lth, use_container_width=True)
             
+            # 🔥 高清图下载逻辑
+            img = generate_high_res_image(fig_lth)
+            if img:
+                st.download_button("📥 下载成本分析图 (高清)", img, f"{ticker}_成本分析.png", "image/png", use_container_width=True)
+            
             tag_cls = "tag-green" if "低" in logic['sell_st'] else ("tag-red" if "高" in logic['sell_st'] else "tag-yellow")
             st.markdown(f"""<div class="conclusion-box"><span class="status-tag {tag_cls}">{logic['sell_st']}</span> <span style="color:#ddd; margin-left:8px;">{logic['sell_txt']}</span></div>""", unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
             
-        # 买方分析
+        # 买方分析 (增加下载按钮)
         with col2:
             st.markdown(f"### 🐇 资金需求动量")
             st.markdown('<div class="metric-card">', unsafe_allow_html=True)
@@ -380,11 +399,16 @@ if df_raw is not None:
                 font={'color':'#ccc'}, xaxis=dict(showgrid=False), yaxis=dict(gridcolor='#333'), showlegend=False)
             st.plotly_chart(fig_vol, use_container_width=True)
             
+            # 🔥 高清图下载逻辑
+            img_vol = generate_high_res_image(fig_vol)
+            if img_vol:
+                st.download_button("📥 下载量能分析图 (高清)", img_vol, f"{ticker}_量能分析.png", "image/png", use_container_width=True)
+            
             tag_cls_buy = "tag-green" if "抢筹" in logic['buy_st'] else ("tag-red" if "枯竭" in logic['buy_st'] else "tag-yellow")
             st.markdown(f"""<div class="conclusion-box"><span class="status-tag {tag_cls_buy}">{logic['buy_st']}</span> <span style="color:#ddd; margin-left:8px;">{logic['buy_txt']}</span></div>""", unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
             
-        # 筹码支撑 (修复版)
+        # 筹码支撑 (增加下载按钮)
         st.markdown(f"### 🎯 筹码结构 (Chip Distribution)")
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
         ca, cb = st.columns([1, 2])
@@ -403,18 +427,15 @@ if df_raw is not None:
             fig_chip.add_hline(y=data['price'], line_color="#00E396", annotation_text="Price")
             fig_chip.add_hline(y=data['support'], line_color="#F0B90B", annotation_text="Support")
             
-            # 🔥 修复了之前的语法错误 🔥
-            fig_chip.update_layout(
-                height=250, 
-                margin=dict(l=0,r=0,t=0,b=0), 
-                paper_bgcolor='rgba(0,0,0,0)', 
-                plot_bgcolor='rgba(0,0,0,0)',
-                font={'color':'#ccc'}, 
-                xaxis=dict(showgrid=False, visible=False), 
-                yaxis=dict(gridcolor='#333'), 
-                showlegend=False
-            )
+            fig_chip.update_layout(height=250, margin=dict(l=0,r=0,t=0,b=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                font={'color':'#ccc'}, xaxis=dict(showgrid=False, visible=False), yaxis=dict(gridcolor='#333'), showlegend=False)
             st.plotly_chart(fig_chip, use_container_width=True)
+            
+            # 🔥 高清图下载逻辑
+            img_chip = generate_high_res_image(fig_chip)
+            if img_chip:
+                st.download_button("📥 下载筹码分析图 (高清)", img_chip, f"{ticker}_筹码分析.png", "image/png", use_container_width=True)
+                
         st.markdown('</div>', unsafe_allow_html=True)
         
     else:

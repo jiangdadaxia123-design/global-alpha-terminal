@@ -6,3 +6,4 @@ requests
 yfinance
 akshare
 kaleido==0.2.1
+
